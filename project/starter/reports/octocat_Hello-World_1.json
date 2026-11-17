@@ -1,0 +1,36 @@
+{
+  "pullRequest": {
+    "owner": "octocat",
+    "repo": "Hello-World",
+    "number": 1
+  },
+  "fileReviews": [],
+  "summary": {
+    "totalFiles": 0,
+    "overallScore": 100,
+    "criticalIssues": 0,
+    "highPriorityTests": 0,
+    "refactoringOpportunities": 0
+  },
+  "recommendations": [
+    {
+      "priority": "low",
+      "category": "Review Scope",
+      "description": "This pull request contains only documentation changes (README file). No source code files were modified, so automated code quality, test coverage, and refactoring analysis were not applicable. Manual review of documentation content is recommended to ensure accuracy and completeness.",
+      "files": [
+        "README"
+      ]
+    }
+  ],
+  "metadata": {
+    "analyzedAt": "2026-11-17T08:46:50.028Z",
+    "duration": 42113,
+    "agentVersions": {
+      "orchestrator": "1.0.0",
+      "code-quality-analyzer": "1.0.0",
+      "test-coverage-analyzer": "1.0.0",
+      "refactoring-suggester": "1.0.0",
+      "model": "claude-sonnet-4-5-20250929"
+    }
+  }
+}

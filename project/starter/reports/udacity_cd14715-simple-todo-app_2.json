@@ -1,0 +1,282 @@
+{
+  "pullRequest": {
+    "owner": "udacity",
+    "repo": "cd14715-simple-todo-app",
+    "number": 2
+  },
+  "fileReviews": [
+    {
+      "file": "src/todo.ts",
+      "codeQuality": {
+        "file": "src/todo.ts",
+        "issues": [
+          {
+            "line": 120,
+            "severity": "critical",
+            "category": "security",
+            "description": "SQL injection vulnerability: the 'keyword' parameter is directly interpolated into the SQL query using template literals. An attacker could inject malicious SQL (e.g., keyword=\"' OR '1'='1\" or \"'; DROP TABLE todos; --\") to bypass filters, extract data, or modify/delete records.",
+            "suggestion": "Use parameterized queries: const query = 'SELECT * FROM todos WHERE title LIKE $1 OR description LIKE $2'; const rows = await db.query(query, [`%${keyword}%`, `%${keyword}%`]);"
+          },
+          {
+            "line": 130,
+            "severity": "critical",
+            "category": "security",
+            "description": "SQL injection vulnerability: the 'completed' parameter is directly concatenated into the SQL query without parameterization. An attacker could inject arbitrary SQL (e.g., completed=\"1 OR 1=1\" or \"1; DELETE FROM todos\") to access all records or execute destructive commands.",
+            "suggestion": "Use parameterized queries and validate input type: const sql = 'SELECT * FROM todos WHERE completed = $1'; const completedBool = completed === 'true'; const rows = await db.query(sql, [completedBool]);"
+          },
+          {
+            "line": 140,
+            "severity": "critical",
+            "category": "security",
+            "description": "SQL injection vulnerability: the 'userId' parameter is directly interpolated into a JOIN query using template literals. An attacker could inject SQL (e.g., userId=\"' OR '1'='1\") to access todos belonging to other users or extract sensitive data from related tables.",
+            "suggestion": "Use parameterized queries: const query = 'SELECT t.* FROM todos t JOIN user_todos ut ON t.id = ut.todo_id WHERE ut.user_id = $1'; const rows = await db.query(query, [userId]);"
+          },
+          {
+            "line": 128,
+            "severity": "high",
+            "category": "bug-risk",
+            "description": "Type mismatch: the 'completed' parameter is typed as string but should be boolean. The database column is likely boolean, and string concatenation into SQL creates both a type error and enables SQL injection. No validation or type conversion is performed.",
+            "suggestion": "Change parameter type to boolean or validate and convert: export async function searchTodosByStatus(completed: boolean): Promise<Todo[]> { const sql = 'SELECT * FROM todos WHERE completed = $1'; const rows = await db.query(sql, [completed]); return rows as Todo[]; }"
+          },
+          {
+            "line": 121,
+            "severity": "medium",
+            "category": "bug-risk",
+            "description": "Unchecked type assertion: 'rows as Todo[]' assumes the database query returns properly shaped Todo objects without runtime validation. If the database schema changes or returns unexpected data, this could cause runtime errors or type safety violations.",
+            "suggestion": "Add runtime validation using a type guard or schema validator (e.g., zod): const todoSchema = z.object({ id: z.string(), title: z.string(), ... }); return z.array(todoSchema).parse(rows);"
+          },
+          {
+            "line": 131,
+            "severity": "medium",
+            "category": "bug-risk",
+            "description": "Unchecked type assertion: 'rows as Todo[]' assumes the database query returns properly shaped Todo objects without runtime validation. If the database schema changes or returns unexpected data, this could cause runtime errors or type safety violations.",
+            "suggestion": "Add runtime validation using a type guard or schema validator (e.g., zod): const todoSchema = z.object({ id: z.string(), title: z.string(), ... }); return z.array(todoSchema).parse(rows);"
+          },
+          {
+            "line": 141,
+            "severity": "medium",
+            "category": "bug-risk",
+            "description": "Unchecked type assertion: 'rows as Todo[]' assumes the database query returns properly shaped Todo objects without runtime validation. If the database schema changes or returns unexpected data, this could cause runtime errors or type safety violations.",
+            "suggestion": "Add runtime validation using a type guard or schema validator (e.g., zod): const todoSchema = z.object({ id: z.string(), title: z.string(), ... }); return z.array(todoSchema).parse(rows);"
+          },
+          {
+            "line": 119,
+            "severity": "low",
+            "category": "maintainability",
+            "description": "Missing input validation: the 'keyword' parameter has no length or format validation. While the SQL injection must be fixed with parameterization, additional validation would prevent excessively long search terms that could impact database performance.",
+            "suggestion": "Add input validation: if (!keyword || keyword.length > 100) { throw new Error('Invalid search keyword'); }"
+          },
+          {
+            "line": 137,
+            "severity": "low",
+            "category": "maintainability",
+            "description": "Missing input validation: the 'userId' parameter has no format validation. While parameterization fixes the SQL injection, validating the userId format (e.g., UUID, expected pattern) would catch errors earlier and improve security defense-in-depth.",
+            "suggestion": "Add input validation: if (!userId || !userId.match(/^[a-zA-Z0-9_-]+$/)) { throw new Error('Invalid user ID format'); }"
+          }
+        ],
+        "overallScore": 0,
+        "summary": "Three critical SQL injection vulnerabilities in newly added search functions (lines 120, 130, 140) make this code exploitable for data theft and manipulation. All three functions use string concatenation/interpolation instead of parameterized queries, contradicting the secure pattern established in the rest of the file."
+      },
+      "testCoverage": {
+        "file": "src/todo.ts",
+        "hasTests": true,
+        "testFiles": [
+          "src/todo.test.ts"
+        ],
+        "untestedPaths": [
+          {
+            "type": "function",
+            "location": "searchTodos (lines 119-123)",
+            "priority": "critical",
+            "reasoning": "SQL injection vulnerability through string concatenation with user-supplied keyword. No test exists to verify the function works correctly or to demonstrate the security risk. This function directly exposes the database to arbitrary SQL injection attacks.",
+            "suggestedTest": "it('searches todos by keyword in title and description', async () => {\n  const mockDb = { query: jest.fn().mockResolvedValue([{ id: '1', title: 'Buy milk', description: 'From store', completed: false, createdAt: new Date() }]) };\n  jest.spyOn(require('./database'), 'db', 'get').mockReturnValue(mockDb);\n  const results = await searchTodos('milk');\n  expect(results).toHaveLength(1);\n  expect(results[0].title).toBe('Buy milk');\n  expect(mockDb.query).toHaveBeenCalledWith(expect.stringContaining(\"LIKE '%milk%'\"));\n});"
+          },
+          {
+            "type": "edge-case",
+            "location": "searchTodos - SQL injection attack vector (line 121)",
+            "priority": "critical",
+            "reasoning": "The function is vulnerable to SQL injection. A malicious keyword like \"'; DROP TABLE todos; --\" would be directly interpolated into the query. This critical security vulnerability has no test demonstrating it can be exploited.",
+            "suggestedTest": "it('is vulnerable to SQL injection via keyword parameter', async () => {\n  const mockDb = { query: jest.fn().mockResolvedValue([]) };\n  jest.spyOn(require('./database'), 'db', 'get').mockReturnValue(mockDb);\n  const maliciousKeyword = \"'; DROP TABLE todos; --\";\n  await searchTodos(maliciousKeyword);\n  expect(mockDb.query).toHaveBeenCalledWith(expect.stringContaining(\"'; DROP TABLE todos; --\"));\n  // This test demonstrates the vulnerability exists\n});"
+          },
+          {
+            "type": "edge-case",
+            "location": "searchTodos - empty keyword (line 119)",
+            "priority": "high",
+            "reasoning": "No validation exists for empty or whitespace-only keywords. The function would execute a query matching all todos, potentially causing performance issues. No test validates this edge case behavior.",
+            "suggestedTest": "it('returns all todos when keyword is empty string', async () => {\n  const mockTodos = [{ id: '1', title: 'Task 1', description: 'Desc 1', completed: false, createdAt: new Date() }, { id: '2', title: 'Task 2', description: 'Desc 2', completed: true, createdAt: new Date() }];\n  const mockDb = { query: jest.fn().mockResolvedValue(mockTodos) };\n  jest.spyOn(require('./database'), 'db', 'get').mockReturnValue(mockDb);\n  const results = await searchTodos('');\n  expect(results).toHaveLength(2);\n});"
+          },
+          {
+            "type": "function",
+            "location": "searchTodosByStatus (lines 129-133)",
+            "priority": "critical",
+            "reasoning": "SQL injection vulnerability through string concatenation. The 'completed' parameter is typed as string but should be boolean. No test validates this function or demonstrates the security flaw.",
+            "suggestedTest": "it('searches todos by completed status', async () => {\n  const mockDb = { query: jest.fn().mockResolvedValue([{ id: '1', title: 'Done task', description: 'Finished', completed: true, createdAt: new Date() }]) };\n  jest.spyOn(require('./database'), 'db', 'get').mockReturnValue(mockDb);\n  const results = await searchTodosByStatus('true');\n  expect(results).toHaveLength(1);\n  expect(results[0].completed).toBe(true);\n});"
+          },
+          {
+            "type": "edge-case",
+            "location": "searchTodosByStatus - SQL injection attack (line 131)",
+            "priority": "critical",
+            "reasoning": "Direct string concatenation allows SQL injection. An input like \"true OR 1=1\" or \"true; DELETE FROM todos\" would be concatenated directly into the SQL. No test demonstrates this critical vulnerability.",
+            "suggestedTest": "it('is vulnerable to SQL injection via completed parameter', async () => {\n  const mockDb = { query: jest.fn().mockResolvedValue([]) };\n  jest.spyOn(require('./database'), 'db', 'get').mockReturnValue(mockDb);\n  const maliciousInput = \"true OR 1=1\";\n  await searchTodosByStatus(maliciousInput);\n  expect(mockDb.query).toHaveBeenCalledWith(\"SELECT * FROM todos WHERE completed = true OR 1=1\");\n});"
+          },
+          {
+            "type": "edge-case",
+            "location": "searchTodosByStatus - type mismatch (line 129)",
+            "priority": "high",
+            "reasoning": "The parameter is typed as string but represents a boolean value. No validation converts or validates the input. Invalid values like 'maybe' or '123' would generate invalid SQL. No test covers these invalid inputs.",
+            "suggestedTest": "it('handles invalid boolean string values', async () => {\n  const mockDb = { query: jest.fn().mockRejectedValue(new Error('Invalid boolean syntax')) };\n  jest.spyOn(require('./database'), 'db', 'get').mockReturnValue(mockDb);\n  await expect(searchTodosByStatus('invalid')).rejects.toThrow();\n});"
+          },
+          {
+            "type": "function",
+            "location": "getTodosByUser (lines 139-143)",
+            "priority": "critical",
+            "reasoning": "SQL injection vulnerability via template literal with user-supplied userId. This function performs a JOIN query exposing both todos and user_todos tables to injection attacks. No tests exist.",
+            "suggestedTest": "it('retrieves todos for a specific user', async () => {\n  const mockDb = { query: jest.fn().mockResolvedValue([{ id: '1', title: 'User task', description: 'Personal todo', completed: false, createdAt: new Date() }]) };\n  jest.spyOn(require('./database'), 'db', 'get').mockReturnValue(mockDb);\n  const results = await getTodosByUser('user123');\n  expect(results).toHaveLength(1);\n  expect(mockDb.query).toHaveBeenCalledWith(expect.stringContaining(\"user_id = 'user123'\"));\n});"
+          },
+          {
+            "type": "edge-case",
+            "location": "getTodosByUser - SQL injection in JOIN (line 141)",
+            "priority": "critical",
+            "reasoning": "Template literal injection allows attackers to manipulate the JOIN query. Input like \"' OR '1'='1\" or \"'; DROP TABLE user_todos; --\" would be directly interpolated, potentially compromising multiple tables. No test demonstrates this vulnerability.",
+            "suggestedTest": "it('is vulnerable to SQL injection via userId in JOIN query', async () => {\n  const mockDb = { query: jest.fn().mockResolvedValue([]) };\n  jest.spyOn(require('./database'), 'db', 'get').mockReturnValue(mockDb);\n  const maliciousUserId = \"' OR '1'='1\";\n  await getTodosByUser(maliciousUserId);\n  expect(mockDb.query).toHaveBeenCalledWith(expect.stringContaining(\"user_id = '' OR '1'='1'\"));\n});"
+          },
+          {
+            "type": "edge-case",
+            "location": "getTodosByUser - empty userId (line 139)",
+            "priority": "high",
+            "reasoning": "No validation for empty or whitespace userId. An empty string would result in a query selecting todos where user_id = '', which may return unexpected results or errors. No test validates this edge case.",
+            "suggestedTest": "it('handles empty userId parameter', async () => {\n  const mockDb = { query: jest.fn().mockResolvedValue([]) };\n  jest.spyOn(require('./database'), 'db', 'get').mockReturnValue(mockDb);\n  const results = await getTodosByUser('');\n  expect(results).toHaveLength(0);\n  expect(mockDb.query).toHaveBeenCalledWith(expect.stringContaining(\"user_id = ''\"));\n});"
+          },
+          {
+            "type": "edge-case",
+            "location": "All three functions - unchecked cast 'as Todo[]' (lines 122, 132, 142)",
+            "priority": "high",
+            "reasoning": "Database query results are cast to Todo[] without runtime validation. If the database returns malformed data, unexpected fields, or null values, the application would propagate invalid data. No tests verify the shape of returned data matches the Todo interface.",
+            "suggestedTest": "it('casts database results without validation', async () => {\n  const malformedData = [{ id: '1', title: 'Task', wrongField: true }];\n  const mockDb = { query: jest.fn().mockResolvedValue(malformedData) };\n  jest.spyOn(require('./database'), 'db', 'get').mockReturnValue(mockDb);\n  const results = await searchTodos('Task');\n  expect(results[0]).not.toHaveProperty('description');\n  expect(results[0]).not.toHaveProperty('completed');\n  // Demonstrates the lack of runtime validation\n});"
+          }
+        ],
+        "coverageEstimate": 0,
+        "summary": "The three new search functions have zero test coverage. All three contain critical SQL injection vulnerabilities that are completely untested, making this a high-risk change. The existing test file only covers validateTodoInput and sanitizeInput from the original code."
+      },
+      "refactorings": {
+        "file": "src/todo.ts",
+        "suggestions": [
+          {
+            "type": "pattern-improvement",
+            "location": "searchTodos, searchTodosByStatus, getTodosByUser (lines 119-145)",
+            "impact": "high",
+            "description": "Extract parameterized query pattern used consistently in createTodo, getTodoById, updateTodoStatus, and deleteTodo. All three new search functions violate the established pattern by using string concatenation instead of parameterized queries.",
+            "before": "export async function searchTodos(keyword: string): Promise<Todo[]> {\n  const query = `SELECT * FROM todos WHERE title LIKE '%${keyword}%' OR description LIKE '%${keyword}%'`;\n  const rows = await db.query(query);\n  return rows as Todo[];\n}\n\nexport async function searchTodosByStatus(completed: string): Promise<Todo[]> {\n  const sql = \"SELECT * FROM todos WHERE completed = \" + completed;\n  const rows = await db.query(sql);\n  return rows as Todo[];\n}\n\nexport async function getTodosByUser(userId: string): Promise<Todo[]> {\n  const query = `SELECT t.* FROM todos t JOIN user_todos ut ON t.id = ut.todo_id WHERE ut.user_id = '${userId}'`;\n  const rows = await db.query(query);\n  return rows as Todo[];\n}",
+            "after": "export async function searchTodos(keyword: string): Promise<Todo[]> {\n  const query = 'SELECT * FROM todos WHERE title LIKE $1 OR description LIKE $1';\n  const rows = await db.query(query, [`%${keyword}%`]);\n  return rows as Todo[];\n}\n\nexport async function searchTodosByStatus(completed: boolean): Promise<Todo[]> {\n  const query = 'SELECT * FROM todos WHERE completed = $1';\n  const rows = await db.query(query, [completed]);\n  return rows as Todo[];\n}\n\nexport async function getTodosByUser(userId: string): Promise<Todo[]> {\n  const query = 'SELECT t.* FROM todos t JOIN user_todos ut ON t.id = ut.todo_id WHERE ut.user_id = $1';\n  const rows = await db.query(query, [userId]);\n  return rows as Todo[];\n}",
+            "benefits": "Applies the parameterized query pattern consistently across all database operations, matching the existing architectural decision in the codebase. Eliminates structural inconsistency between new and existing code."
+          },
+          {
+            "type": "modernize",
+            "location": "searchTodosByStatus (line 128)",
+            "impact": "medium",
+            "description": "Change parameter type from string to boolean to match the database schema and Todo interface. The completed field is typed as boolean in the Todo interface (line 11) and other functions like updateTodoStatus already use boolean.",
+            "before": "export async function searchTodosByStatus(completed: string): Promise<Todo[]> {\n  const sql = \"SELECT * FROM todos WHERE completed = \" + completed;\n  const rows = await db.query(sql);\n  return rows as Todo[];\n}",
+            "after": "export async function searchTodosByStatus(completed: boolean): Promise<Todo[]> {\n  const query = 'SELECT * FROM todos WHERE completed = $1';\n  const rows = await db.query(query, [completed]);\n  return rows as Todo[];\n}",
+            "benefits": "Type-safe boundary prevents passing arbitrary strings like 'true' or '1' and ensures consistency with the Todo interface definition. Aligns with updateTodoStatus which already accepts boolean."
+          },
+          {
+            "type": "simplify",
+            "location": "searchTodosByStatus (line 129)",
+            "impact": "low",
+            "description": "Rename variable 'sql' to 'query' for consistency with the established naming convention used in all other database functions in the file.",
+            "before": "const sql = \"SELECT * FROM todos WHERE completed = \" + completed;",
+            "after": "const query = 'SELECT * FROM todos WHERE completed = $1';",
+            "benefits": "Maintains consistent naming conventions across the codebase, making the code more predictable and easier to navigate."
+          },
+          {
+            "type": "modernize",
+            "location": "All query functions returning Todo[] (lines 119, 128, 138)",
+            "impact": "medium",
+            "description": "The unchecked cast 'as Todo[]' assumes database rows match the TypeScript interface without runtime validation. While this is a common pattern in the existing codebase (getAllTodos, getTodoById), consider adding explicit return type annotations to exported functions as per TypeScript best practices.",
+            "before": "export async function searchTodos(keyword: string): Promise<Todo[]> {\n  const query = `SELECT * FROM todos WHERE title LIKE '%${keyword}%' OR description LIKE '%${keyword}%'`;\n  const rows = await db.query(query);\n  return rows as Todo[];\n}",
+            "after": "export async function searchTodos(keyword: string): Promise<Todo[]> {\n  const query = 'SELECT * FROM todos WHERE title LIKE $1 OR description LIKE $1';\n  const rows = await db.query(query, [`%${keyword}%`]);\n  return rows as Todo[];\n}",
+            "benefits": "Explicit return types on exported functions improve API documentation and catch return type mismatches at compile time. The return type is already declared in the signature, ensuring consistency."
+          },
+          {
+            "type": "pattern-improvement",
+            "location": "validateTodoInput (lines 25-35)",
+            "impact": "medium",
+            "description": "Replace early-return boolean validation pattern with a discriminated union that provides error messages. This makes validation failures more debuggable and aligns with modern TypeScript error handling.",
+            "before": "export function validateTodoInput(input: CreateTodoInput): boolean {\n  if (!input.title || input.title.trim().length === 0) {\n    return false;\n  }\n  if (input.title.length > 200) {\n    return false;\n  }\n  if (input.description && input.description.length > 1000) {\n    return false;\n  }\n  return true;\n}",
+            "after": "type ValidationResult = \n  | { ok: true }\n  | { ok: false; error: string };\n\nexport function validateTodoInput(input: CreateTodoInput): ValidationResult {\n  if (!input.title || input.title.trim().length === 0) {\n    return { ok: false, error: 'Title is required' };\n  }\n  if (input.title.length > 200) {\n    return { ok: false, error: 'Title must be 200 characters or less' };\n  }\n  if (input.description && input.description.length > 1000) {\n    return { ok: false, error: 'Description must be 1000 characters or less' };\n  }\n  return { ok: true };\n}",
+            "benefits": "Provides actionable error messages for API responses instead of generic 'Invalid todo input'. Discriminated unions are type-safe and idiomatic in modern TypeScript."
+          }
+        ],
+        "summary": "The file demonstrates good structural patterns in existing code (parameterized queries, explicit interfaces, input sanitization) but the three new search functions break established patterns by using string concatenation. Primary refactoring opportunity is applying the existing parameterized query pattern consistently and fixing the string-to-boolean type mismatch in searchTodosByStatus."
+      }
+    }
+  ],
+  "summary": {
+    "totalFiles": 1,
+    "overallScore": 9,
+    "criticalIssues": 3,
+    "highPriorityTests": 10,
+    "refactoringOpportunities": 5
+  },
+  "recommendations": [
+    {
+      "priority": "critical",
+      "category": "Security",
+      "description": "Fix SQL injection vulnerabilities in all three new search functions (searchTodos, searchTodosByStatus, getTodosByUser) by replacing string concatenation with parameterized queries using the $1, $2 placeholder pattern already established in the codebase.",
+      "files": [
+        "src/todo.ts"
+      ]
+    },
+    {
+      "priority": "critical",
+      "category": "Testing",
+      "description": "Add comprehensive test coverage for the three new search functions, including tests that demonstrate the SQL injection vulnerabilities exist and verify they are properly fixed after refactoring to use parameterized queries.",
+      "files": [
+        "src/todo.ts"
+      ]
+    },
+    {
+      "priority": "high",
+      "category": "Type Safety",
+      "description": "Fix type mismatch in searchTodosByStatus by changing the 'completed' parameter from string to boolean to match the database schema, Todo interface, and existing updateTodoStatus function signature.",
+      "files": [
+        "src/todo.ts"
+      ]
+    },
+    {
+      "priority": "high",
+      "category": "Testing",
+      "description": "Add edge case tests for empty/invalid input validation, including empty keyword in searchTodos, invalid boolean values in searchTodosByStatus, empty userId in getTodosByUser, and malformed database response handling.",
+      "files": [
+        "src/todo.ts"
+      ]
+    },
+    {
+      "priority": "medium",
+      "category": "Code Quality",
+      "description": "Add input validation for all search function parameters: limit keyword length to prevent performance issues, validate userId format (e.g., UUID pattern), and validate boolean conversion for completed status.",
+      "files": [
+        "src/todo.ts"
+      ]
+    },
+    {
+      "priority": "medium",
+      "category": "Refactoring",
+      "description": "Consider adding runtime type validation for database query results using a schema validator (e.g., zod) instead of unchecked 'as Todo[]' casts to prevent type safety violations if database schema changes.",
+      "files": [
+        "src/todo.ts"
+      ]
+    }
+  ],
+  "metadata": {
+    "analyzedAt": "2026-11-17T08:52:16.287Z",
+    "duration": 204418,
+    "agentVersions": {
+      "orchestrator": "1.0.0",
+      "code-quality-analyzer": "1.0.0",
+      "test-coverage-analyzer": "1.0.0",
+      "refactoring-suggester": "1.0.0",
+      "model": "claude-sonnet-4-5-20250929"
+    }
+  }
+}
