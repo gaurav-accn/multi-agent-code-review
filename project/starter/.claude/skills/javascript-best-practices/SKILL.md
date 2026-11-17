@@ -1,4 +1,5 @@
 ---
+name: javascript-best-practices
 description: Analyzes JavaScript code for modern best practices, common pitfalls, and ES2015+ patterns
 ---
 

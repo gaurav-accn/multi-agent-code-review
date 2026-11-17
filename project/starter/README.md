@@ -1,192 +1,146 @@
 # Enterprise Multi-Agent Code Review Orchestrator
 
-Build a production-ready multi-agent system that automates code review using the Claude Agent SDK.
+A multi-agent system built with the **Claude Agent SDK** that reviews GitHub pull requests.
+An orchestrator fetches the PR through the **GitHub MCP server** and dispatches three
+specialised subagents **in parallel**. It then validates their combined findings against a
+**Zod** schema and writes the result as JSON, Markdown and HTML reports.
 
-## Project Overview
+```
+                 ┌──────────────────────────────────────┐
+                 │            ORCHESTRATOR              │
+                 │  GitHub MCP → Task tool → aggregate  │
+                 └──────────────────┬───────────────────┘
+          ┌─────────────────────────┼─────────────────────────┐
+          ▼                         ▼                         ▼
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│ code-quality-    │     │ test-coverage-   │     │ refactoring-     │
+│ analyzer         │     │ analyzer         │     │ suggester        │
+│ security, perf,  │     │ gaps, priorities,│     │ patterns, before/│
+│ best practices   │     │ runnable tests   │     │ after code       │
+└──────────────────┘     └──────────────────┘     └──────────────────┘
+          └─────────────────────────┼─────────────────────────┘
+                                    ▼
+             ReviewReport (Zod-validated structured output)
+                                    ▼
+            reports/<owner>_<repo>_<pr>.{json, md, html}
+```
 
-This system uses multiple specialized AI agents working together to provide comprehensive code reviews:
+## Features
 
-- **Main Orchestrator** - Coordinates the review process and aggregates results
-- **Code Quality Analyzer** - Identifies code smells, anti-patterns, and best practice violations
-- **Test Coverage Analyzer** - Evaluates test completeness and suggests missing test cases
-- **Refactoring Suggester** - Recommends architectural improvements and refactoring opportunities
+- **3 subagents** (`AgentDefinition`, `model: 'inherit'`, least-privilege read-only tools, all with the `Skill` tool)
+- **Claude Skills** in `.claude/skills/`: `typescript-patterns`, `security-analysis`, `javascript-best-practices`
+- **MCP**: GitHub (`@modelcontextprotocol/server-github`) and ESLint (`@eslint/mcp`) over stdio
+- **Structured output**: `outputFormat` built with `zod-to-json-schema` (`$refStrategy: 'root'`), validated with `safeParse`
+- **Reliability**: retry with exponential backoff and jitter, `Promise.race` timeout, sliding-window rate limiter
+- **Guardrails**: `permissionMode: 'dontAsk'` with an explicit allow-list. Bash, Write, Edit and GitHub write tools are disallowed.
+- **Trustworthy numbers**: summary scores are recomputed in code from the aggregated findings, not taken from the model
 
-## What's Provided
+## Setup
 
-This starter includes the infrastructure you need:
-
-- **Type Definitions** (`src/types/`) - Zod schemas for validation
-- **Logger** (`src/utils/logger.ts`) - Winston structured logging
-- **Report Generator** (`src/utils/report-generator.ts`) - Markdown/HTML/JSON report generation
-- **Project Config** - `package.json`, `tsconfig.json`, `.env.example`
-- **Test Skeletons** (`tests/`) - Test file structure
-- **Example Skill** (`.claude/skills/`) - Sample Claude skill
-
-## What You Need to Implement
-
-Your tasks:
-
-1. **Agent Definitions** (`src/agents/`)
-   - Code Quality Analyzer
-   - Test Coverage Analyzer
-   - Refactoring Suggester
-
-2. **Prompts** (`src/prompts/`)
-   - Orchestrator prompt
-   - Agent-specific prompts
-
-3. **MCP Configuration** (`src/config/mcp.config.ts`)
-   - GitHub MCP server
-   - ESLint MCP server
-
-4. **Orchestrator** (`src/orchestrator.ts`)
-   - Main coordination logic
-   - Agent spawning and result aggregation
-
-5. **Main Entry Point** (`src/main.ts`)
-   - CLI argument parsing
-   - Environment validation
-   - Report generation
-
-6. **Error Handler** (Recommended) (`src/utils/error-handler.ts`)
-   - Custom `ReviewError` class
-   - Retry logic with exponential backoff
-   - Timeout wrapper
-
-7. **Rate Limiter** (Optional) (`src/utils/rate-limiter.ts`)
-   - Token bucket algorithm with sliding window
-   - Request and token tracking
-   - Concurrent request management
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- Anthropic API access (provided in Vocareum workspace) or [your own API key](https://console.anthropic.com/)
-- [GitHub Personal Access Token](https://github.com/settings/tokens) (recommended - scopes: `repo`, `read:org`)
-
-### Installation
-
-**In Vocareum Workspace (Recommended):**
-
-Your workspace comes pre-configured with Anthropic API credentials.
+Requirements: Node.js 18+ and an Anthropic API key (or AWS Bedrock credentials).
 
 ```bash
-# Install dependencies from repository root (uses npm workspaces)
-cd /voc/work/cd14715-claude-code-classroom
-npm install
-
-# Navigate to project and configure
 cd project/starter
-cp .env.example .env
-```
-
-**Local Setup:**
-
-```bash
-# Clone the repository
-git clone https://github.com/udacity/cd14715-claude-code-classroom.git
-cd cd14715-claude-code-classroom/project/starter
-
-# Install dependencies
 npm install
-
-# Configure environment
 cp .env.example .env
 ```
 
-### Configuration
+Edit `.env`:
 
-Edit `.env` with your settings:
+| Variable | Required | Example / notes |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Yes* | API key (*or AWS credentials below) |
+| `ANTHROPIC_BASE_URL` | No | Only when using Udacity/Vocareum credentials |
+| `ANTHROPIC_MODEL` | Yes | `claude-sonnet-4-5-20250929` |
+| `PROJECT_ROOT` | Yes | Absolute path of `project/starter` (run `pwd` inside it) |
+| `GITHUB_TOKEN` | Recommended | Higher GitHub rate limits; set automatically in GitHub Codespaces |
+| `LOG_LEVEL` | No | `error`, `warn`, `info` (default), `debug` |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `CLAUDE_CODE_USE_BEDROCK=1` | Alt. | AWS Bedrock instead of the Anthropic API |
 
-**In Vocareum Workspace:**
-```bash
-# API credentials are already in your environment - don't add them here
+No secrets are stored in source code. `.env` is git-ignored.
 
-# Model Configuration (REQUIRED)
-ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
+**GitHub Codespaces:** `PROJECT_ROOT=/workspaces/<repo-name>/project/starter`. Codespaces already provides `GITHUB_TOKEN`.
 
-# Project root (REQUIRED)
-PROJECT_ROOT=/voc/work/cd14715-claude-code-classroom/project/starter
-
-# GitHub Token (RECOMMENDED for higher rate limits)
-# GITHUB_TOKEN=ghp_your-token-here
-
-# Logging level (optional)
-LOG_LEVEL=info
-```
-
-**Local Setup with Your Own API Key:**
-```bash
-# Your Anthropic API key
-ANTHROPIC_API_KEY=sk-ant-your-key-here
-
-# Model Configuration (REQUIRED)
-ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
-
-# Project root (REQUIRED - update to your path)
-PROJECT_ROOT=/absolute/path/to/project/starter
-
-# GitHub Token (RECOMMENDED)
-# GITHUB_TOKEN=ghp_your-token-here
-
-# Logging level (optional)
-LOG_LEVEL=info
-```
-
-### Running
+## Usage
 
 ```bash
-# Development mode
 npm run dev -- <owner> <repo> <pr-number>
 
-# Production build
-npm run build
-npm start <owner> <repo> <pr-number>
-
-# Example
-npm run dev -- facebook react 12345
+npm run dev -- udacity cd14715-simple-todo-app 2   # review a PR
+npm run dev -- octocat Hello-World 1               # integration smoke test
 ```
 
-### Testing
+Arguments and environment are validated up front, so mistakes produce actionable messages instead of stack traces:
+
+```
+❌ PR number must be a positive integer, got "12abc"
+Usage: npm run dev -- <owner> <repo> <pr-number>
+```
+
+Logs show each step: MCP connection status, every `Task` subagent invocation, `Skill` usage
+and the MCP calls made by each agent. Full logs are in `logs/combined.log`.
+
+## Reports
+
+Each run writes three files to `reports/`:
+
+| File | Contents |
+|---|---|
+| `*.json` | Full `ReviewReport` (schema-valid) |
+| `*.md` | Summary table, recommendations, issues with line and severity, test suggestions with code, refactorings with before/after |
+| `*.html` | Styled, self-contained page with the same content (model output is HTML-escaped) |
+
+### Results for `udacity/cd14715-simple-todo-app`
+
+| PR | File | Score | Critical issues | High-priority tests | Refactorings |
+|---|---|---|---|---|---|
+| #1 add clean code fixture | `fixtures/clean-code.ts` | 65 | 0 | 6 | 5 |
+| #2 search functionality | `src/todo.ts` | 9 | 3 (SQL injection) | 10 | 5 |
+| #3 premium subscriptions | `src/premium.ts` | 2 | 3 | 11 | 10 |
+
+## Testing
 
 ```bash
-# Run all tests
-npm test
-
-# Run specific test
-npm test -- orchestrator.test.ts
-
-# Watch mode
-npm test -- --watch
+npm run build   # TypeScript compile
+npm test        # Vitest unit tests (no API key needed)
 ```
 
-## Key Technologies
+| Test file | Covers |
+|---|---|
+| `tests/schemas.test.ts` | Valid/invalid data, enums, boundaries (0/100), empty arrays, JSON Schema export |
+| `tests/utils.test.ts` | `withRetry` backoff and exhaustion, `withTimeout`, rate limiter sliding window and concurrency |
+| `tests/env.test.ts` | CLI argument parsing and environment validation |
+| `tests/orchestrator.test.ts` | SDK options, subagent invocation, aggregation, Zod validation, failure and retry paths (SDK `query` injected) |
+| `tests/report-generator.test.ts` | Markdown/HTML/JSON content, HTML escaping, file names |
 
-- **Claude Agent SDK** - Multi-agent orchestration framework
-- **Model Context Protocol (MCP)** - External data integration
-- **Zod** - Schema validation and type safety
-- **TypeScript** - Type-safe development
-- **Vitest** - Testing framework
-- **Winston** - Structured logging
+The real end-to-end integration test (`octocat/Hello-World#1`) is opt-in because it needs API credentials:
 
-## Success Criteria
+```bash
+RUN_INTEGRATION=1 npx vitest run tests/orchestrator.test.ts
+```
 
-Your implementation is complete when:
+## Project structure
 
-- [ ] TypeScript compiles without errors: `npm run build`
-- [ ] All tests pass: `npm test`
-- [ ] Can review a real PR: `npm start owner repo pr-number`
-- [ ] Generates reports in at least one format (MD, HTML, JSON)
-- [ ] Rate limiting prevents API throttling (Optional)
-- [ ] Errors are handled gracefully (Recommended)
+```
+src/
+├── agents/            # 3 AgentDefinitions + registry (reviewAgents)
+├── prompts/           # orchestrator + 3 subagent prompts
+├── config/
+│   ├── mcp.config.ts  # GitHub + ESLint MCP servers, tool lists
+│   ├── env.ts         # CLI + environment validation
+│   └── load-env.ts    # loads .env before other modules
+├── types/             # Zod schemas (provided)
+├── utils/             # error-handler, rate-limiter, logger, report-generator
+├── orchestrator.ts    # CodeReviewOrchestrator (query, aggregation, validation)
+└── main.ts            # CLI entry point
+.claude/skills/        # Claude Skills used by the subagents
+tests/                 # Vitest unit tests
+reports/               # Generated reports
+```
 
-## Resources
+## Design notes
 
-- [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk)
-- [Model Context Protocol](https://modelcontextprotocol.io/)
-- [Anthropic API Docs](https://docs.anthropic.com/)
-- [Zod Documentation](https://zod.dev/)
-
-Good luck!
+- **Parallel subagents:** the three analyses are independent, so the orchestrator prompt requires all three `Task` calls in a single response.
+- **Real line numbers:** subagents fetch the full file at the PR head SHA with `mcp__github__get_file_contents`, so reported lines match the file, not diff offsets.
+- **Graceful degradation:** a failed subagent is retried once by the orchestrator. If it fails again, a placeholder marked `ANALYSIS UNAVAILABLE` is used and excluded from scoring. A failed or invalid session is retried with backoff. A GitHub MCP connection failure fails fast with a clear error.
+- **Scoring:** per file, 60% code quality + 25% estimated coverage + 15% refactoring health, averaged across files.

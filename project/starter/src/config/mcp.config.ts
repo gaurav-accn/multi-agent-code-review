@@ -13,30 +13,40 @@
 
 export const mcpServersConfig = {
   /**
-   * GitHub MCP Server
-   * Provides tools for GitHub API operations
-   *
-   * TODO: Configure with:
-   * - type: 'stdio' as const
-   * - command: 'npx'
-   * - args: ['-y', '@modelcontextprotocol/server-github']
-   * - env: { GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_TOKEN || '' }
-   *
-   * Note: GITHUB_TOKEN is optional (recommended for private repos and higher rate limits).
-   * The GitHub MCP server expects GITHUB_PERSONAL_ACCESS_TOKEN as the env var name.
-   * We map our GITHUB_TOKEN from .env to this expected name.
+   * GitHub MCP Server - fetches PR data, changed files and file contents.
+   * The server expects GITHUB_PERSONAL_ACCESS_TOKEN, so we map our GITHUB_TOKEN to it.
+   * Token is optional for public repos (it only raises the rate limit).
    */
-  github: { },
+  github: {
+    type: 'stdio' as const,
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-github'],
+    env: {
+      GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_TOKEN || ''
+    }
+  },
 
   /**
-   * ESLint MCP Server
-   * Provides tools for linting and code quality analysis
-   *
-   * TODO: Configure with:
-   * - type: 'stdio' as const
-   * - command: 'npx'
-   * - args: ['-y', '@eslint/mcp@latest']
-   * - env: {}
+   * ESLint MCP Server - lints local JS/TS files. No authentication needed.
    */
-  eslint: { }
+  eslint: {
+    type: 'stdio' as const,
+    command: 'npx',
+    args: ['-y', '@eslint/mcp@latest'],
+    env: {}
+  }
 };
+
+/**
+ * Read-only GitHub MCP tools (naming pattern: mcp__<server>__<tool>).
+ * These are the tool names exposed by @modelcontextprotocol/server-github.
+ */
+export const githubTools = [
+  'mcp__github__get_pull_request',
+  'mcp__github__get_pull_request_files',
+  'mcp__github__get_file_contents',
+  'mcp__github__search_code'
+];
+
+/** ESLint MCP tool */
+export const eslintTools = ['mcp__eslint__lint-files'];
